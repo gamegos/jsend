@@ -72,3 +72,54 @@ func write(w http.ResponseWriter, status string, statusCode int, data interface{
 
 	return writeJSONResponse(w, res)
 }
+
+// Wrap wraps given http.ResponseWriter and returns a response object which
+// implements http.ResponseWriter interface.
+func Wrap(rw http.ResponseWriter) http.ResponseWriter {
+	if rw.Header().Get("Content-Type") == "" {
+		rw.Header().Set("Content-Type", "application/json")
+	}
+
+	return &response{rw: rw}
+}
+
+// A response wraps a http.ResponseWriter.
+type response struct {
+	rw   http.ResponseWriter
+	code int
+}
+
+func (r *response) Header() http.Header {
+	return r.rw.Header()
+}
+
+func (r *response) WriteHeader(code int) {
+	r.code = code
+	r.rw.WriteHeader(code)
+}
+
+func (r *response) Write(data []byte) (int, error) {
+	st := getStatus(r.code)
+	jr := &jsonResponse{Status: st}
+	switch st {
+	case StatusError:
+		jr.Message = string(data)
+	case StatusFail:
+		jr.Data = data
+	default:
+		jr.Data = data
+	}
+
+	return writeJSONResponse(r.rw, jr)
+}
+
+func getStatus(code int) string {
+	switch {
+	case code >= 500:
+		return StatusError
+	case code >= 400 && code < 500:
+		return StatusFail
+	}
+
+	return StatusSuccess
+}

@@ -2,6 +2,7 @@ package jsend
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"reflect"
 	"testing"
@@ -127,5 +128,75 @@ func TestWriteJSONResponse(t *testing.T) {
 	n, err := writeJSONResponse(rw, res)
 	if n != 0 || err != ErrInvalidRawJSON {
 		t.Errorf("writeJSONResponse(%q): have: (%d, %q), want: (%d, %q)", res, n, err, 0, ErrInvalidRawJSON)
+	}
+}
+
+type writeIn struct {
+	statusCode  int
+	data        string
+	contentType string
+}
+
+type writeOut struct {
+	statusCode  int
+	body        string
+	err         error
+	contentType string
+}
+
+var wrapTestCases = []struct {
+	in  *writeIn
+	out *writeOut
+}{
+	{
+		&writeIn{200, `{"foo":"bar"}`, ""},
+		&writeOut{200, `{"status":"success","data":{"foo":"bar"}}`, nil, jsonContentType},
+	},
+	{
+		&writeIn{400, `{"foo":"bar"}`, ""},
+		&writeOut{400, `{"status":"fail","data":{"foo":"bar"}}`, nil, jsonContentType},
+	},
+	{
+		&writeIn{503, `something wrong`, ""},
+		&writeOut{503, `{"status":"error","message":"something wrong"}`, nil, jsonContentType},
+	},
+	{
+		&writeIn{200, `some invalid json`, ""},
+		&writeOut{200, ``, ErrInvalidRawJSON, jsonContentType},
+	},
+	{
+		&writeIn{200, `"foo"`, "application/foo+json"},
+		&writeOut{200, `{"status":"success","data":"foo"}`, nil, "application/foo+json"},
+	},
+}
+
+func TestWrapWrite(t *testing.T) {
+	for _, tt := range wrapTestCases {
+		rw := httptest.NewRecorder()
+		w := Wrap(rw)
+
+		if tt.in.contentType != "" {
+			w.Header().Set("Content-Type", tt.in.contentType)
+		}
+
+		w.WriteHeader(tt.in.statusCode)
+		n, err := w.Write([]byte(tt.in.data))
+		label := fmt.Sprintf("wrap(w).Write(%v)", tt.in)
+
+		if n != len(tt.out.body) {
+			t.Errorf("%s: n: have: %d, want: %d", label, n, len(tt.out.body))
+		}
+
+		if err != tt.out.err {
+			t.Errorf("%s: err: have: %q, want: %q", label, err, tt.out.err)
+		}
+
+		if rw.Header().Get("Content-Type") != tt.out.contentType {
+			t.Errorf("%s: content-type: have: %q, want: %q", label, rw.Header().Get("Content-Type"), tt.out.contentType)
+		}
+
+		if rw.Body.String() != tt.out.body {
+			t.Errorf("%s: body: have: %q, want: %q", label, rw.Body.String(), tt.out.body)
+		}
 	}
 }
