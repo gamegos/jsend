@@ -21,3 +21,8 @@ import "github.com/gamegos/jsend"
 ```
 
 See [godoc](http://godoc.org/github.com/gamegos/jsend)
+
+
+## License
+
+MIT. See [LICENSE](./LICENSE).
