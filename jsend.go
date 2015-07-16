@@ -1,3 +1,88 @@
+/*
+Package jsend implements JSend* specification.
+
+Use by wrapping existing ResponseWriter
+
+You can wrap your ResponseWriter:
+
+	w := jsend.Wrap(w)
+
+Returning object is also implements http.ResponseWriter. You can "Write" your json blob to it.
+
+	w.Write(`{"foo": "bar"}`)
+
+	// body:
+	{
+		"status": "success",
+		"data": {
+			"foo": "bar"
+		}
+	}
+
+Status field in response body is derived from http status code. Status is "fail"
+if code is 4XX, "error" if code is 5XX and "success" otherwise.
+
+
+Fail:
+	w.WriteHeader(400)
+	w.Write(`{"foo": "invalid"}`)
+
+	// body:
+	{
+		"status": "fail",
+		"data": {
+			"foo": "invalid"
+		}
+	}
+
+Error:
+	w.WriteHeader(500)
+	w.Write(`we are closed`)
+
+	// body:
+	{
+		"status": "error",
+		"message": "we are closed"
+	}
+
+Note: Write method does not json-encode your data.
+
+Use status functions
+
+You can use Success, Fail and Error functions directly to write json responses with those statuses.
+
+Success:
+	jsend.Success(w, data, 200) // w is ResponseWriter
+
+	// body:
+	{
+		"status": "success",
+		"data": // your json encoded data
+	}
+
+Fail:
+	jsend.Fail(w, data, 400)
+
+	// body:
+	{
+		"status": "fail",
+		"data": // your json encoded data
+	}
+
+Error:
+	jsend.Fail(w, "something bad happened", 500)
+
+	{
+		"status": "error",
+		"message": "something bad happened"
+	}
+
+Success, Fail and Error functions write given statusCode to response. Also
+"Content-Type" header is set to "application/json" if it is not set already.
+
+
+* See http://labs.omniti.com/labs/jsend for details.
+*/
 package jsend
 
 import (
