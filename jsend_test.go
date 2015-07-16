@@ -200,3 +200,17 @@ func TestWrapWrite(t *testing.T) {
 		}
 	}
 }
+
+func TestMultipleWrite(t *testing.T) {
+	rw := httptest.NewRecorder()
+	w := Wrap(rw)
+
+	_, err0 := w.Write([]byte(`"hello"`))
+	if err0 != nil {
+		t.Fatalf("MultipleWrite: first write must succeed")
+	}
+	n1, err1 := w.Write([]byte(`"world"`))
+	if n1 != 0 || err1 != ErrWrittenAlready {
+		t.Errorf("MultipleWrite: have: (%d, %q), want: (%d, %q)", n1, err1, 0, ErrWrittenAlready)
+	}
+}

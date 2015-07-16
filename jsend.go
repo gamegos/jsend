@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
 )
 
 // JSend status codes
@@ -17,6 +18,7 @@ const (
 var (
 	ErrInvalidRawJSON = errors.New("jsend: given data is not a valid json.RawMessage")
 	ErrJSONEncode     = errors.New("jsend: could not json encode given data")
+	ErrWrittenAlready = errors.New("jsend: written already")
 )
 
 // Success json encodes and writes data to specified response with "success" status.
@@ -85,8 +87,10 @@ func Wrap(rw http.ResponseWriter) http.ResponseWriter {
 
 // A response wraps a http.ResponseWriter.
 type response struct {
-	rw   http.ResponseWriter
-	code int
+	rw      http.ResponseWriter
+	code    int
+	written bool
+	sync.Mutex
 }
 
 func (r *response) Header() http.Header {
@@ -99,6 +103,14 @@ func (r *response) WriteHeader(code int) {
 }
 
 func (r *response) Write(data []byte) (int, error) {
+	r.Lock()
+	defer r.Unlock()
+
+	if r.written {
+		return 0, ErrWrittenAlready
+	}
+	r.written = true
+
 	st := getStatus(r.code)
 	jr := &jsonResponse{Status: st}
 	switch st {
