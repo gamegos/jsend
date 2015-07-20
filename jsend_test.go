@@ -20,6 +20,7 @@ const jsonContentType = "application/json"
 var (
 	testBody0 = map[string]interface{}{"foo": "bar", "baz": "qux"}
 	testBody1 = map[string]interface{}{"id": "invalid", "dob": "empty"}
+	// cant json encode this
 	testBody2 = map[string]interface{}{"foos": map[[2]byte]string{
 		[2]byte{'2', '3'}: "4",
 		[2]byte{'a', 'b'}: "c",
@@ -144,7 +145,7 @@ type writeOut struct {
 	contentType string
 }
 
-var wrapTestCases = []struct {
+var writeTestCases = []struct {
 	in  *writeIn
 	out *writeOut
 }{
@@ -168,10 +169,36 @@ var wrapTestCases = []struct {
 		&writeIn{200, `"foo"`, "application/foo+json"},
 		&writeOut{200, `{"status":"success","data":"foo"}`, nil, "application/foo+json"},
 	},
+
+	// null
+	{
+		&writeIn{200, "", ""},
+		&writeOut{200, `{"status":"success","data":null}`, nil, jsonContentType},
+	},
+	{
+		&writeIn{200, "null", ""},
+		&writeOut{200, `{"status":"success","data":null}`, nil, jsonContentType},
+	},
+
+	// bool
+	{
+		&writeIn{200, "false", ""},
+		&writeOut{200, `{"status":"success","data":false}`, nil, jsonContentType},
+	},
+	{
+		&writeIn{200, "true", ""},
+		&writeOut{200, `{"status":"success","data":true}`, nil, jsonContentType},
+	},
+
+	// num
+	{
+		&writeIn{200, "2.71828", ""},
+		&writeOut{200, `{"status":"success","data":2.71828}`, nil, jsonContentType},
+	},
 }
 
 func TestWrapWrite(t *testing.T) {
-	for _, tt := range wrapTestCases {
+	for _, tt := range writeTestCases {
 		rw := httptest.NewRecorder()
 		w := Wrap(rw)
 
@@ -184,7 +211,7 @@ func TestWrapWrite(t *testing.T) {
 		label := fmt.Sprintf("wrap(w).Write(%v)", tt.in)
 
 		if n != len(tt.out.body) {
-			t.Errorf("%s: n: have: %d, want: %d", label, n, len(tt.out.body))
+			t.Errorf("%s: n: have: %d, want: %d, data: (%q), output: (%q)", label, n, len(tt.out.body), tt.in.data, tt.out.body)
 		}
 
 		if err != tt.out.err {
@@ -195,7 +222,7 @@ func TestWrapWrite(t *testing.T) {
 			t.Errorf("%s: content-type: have: %q, want: %q", label, rw.Header().Get("Content-Type"), tt.out.contentType)
 		}
 
-		if rw.Body.String() != tt.out.body {
+		if !compareJSON(rw.Body.Bytes(), []byte(tt.out.body)) {
 			t.Errorf("%s: body: have: %q, want: %q", label, rw.Body.String(), tt.out.body)
 		}
 	}
@@ -213,4 +240,12 @@ func TestMultipleWrite(t *testing.T) {
 	if n1 != 0 || err1 != ErrWrittenAlready {
 		t.Errorf("MultipleWrite: have: (%d, %q), want: (%d, %q)", n1, err1, 0, ErrWrittenAlready)
 	}
+}
+
+func compareJSON(v1, v2 []byte) bool {
+	var e1, e2 interface{}
+	json.Unmarshal(v1, &e1)
+	json.Unmarshal(v2, &e2)
+
+	return reflect.DeepEqual(e1, e2)
 }
