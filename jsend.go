@@ -122,9 +122,28 @@ func Fail(w http.ResponseWriter, data interface{}, code int) (int, error) {
 }
 
 type jsonResponse struct {
-	Status  string          `json:"status"`
-	Data    json.RawMessage `json:"data,omitempty"`
-	Message string          `json:"message,omitempty"`
+	Status  string
+	Data    json.RawMessage
+	Message string
+}
+
+func (j *jsonResponse) MarshalJSON() ([]byte, error) {
+	if j.Status == StatusError {
+		return json.Marshal(map[string]interface{}{
+			"status":  j.Status,
+			"message": j.Message,
+		})
+	}
+
+	var data *json.RawMessage
+	if len(j.Data) > 0 {
+		data = &j.Data
+	}
+
+	return json.Marshal(map[string]interface{}{
+		"status": j.Status,
+		"data":   data,
+	})
 }
 
 func writeJSONResponse(w http.ResponseWriter, response *jsonResponse) (int, error) {
