@@ -70,7 +70,7 @@ Fail:
 	}
 
 Error:
-	jsend.Fail(w, "something bad happened", 500)
+	jsend.Error(w, "something bad happened", 500)
 
 	{
 		"status": "error",
