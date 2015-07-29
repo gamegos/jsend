@@ -1,15 +1,18 @@
 /*
 Package jsend implements JSend* specification.
 
-Use by wrapping existing ResponseWriter
+You can wrap your http.ResponseWriter:
 
-You can wrap your ResponseWriter:
+	jsend.Wrap(w)
 
-	w := jsend.Wrap(w)
+Returning object also implements http.ResponseWriter. So you can pass it to your
+http middlewares.
 
-Returning object is also implements http.ResponseWriter. You can "Write" your json blob to it.
+Success example:
 
-	w.Write(`{"foo": "bar"}`)
+	jsend.Wrap(w).
+		Data(yourData).
+		Send()
 
 	// body:
 	{
@@ -24,8 +27,10 @@ if code is 4XX, "error" if code is 5XX and "success" otherwise.
 
 
 Fail:
-	w.WriteHeader(400)
-	w.Write(`{"foo": "invalid"}`)
+	jsend.Wrap(w).
+		Status(400).
+		Data(yourData).
+		Send()
 
 	// body:
 	{
@@ -36,8 +41,10 @@ Fail:
 	}
 
 Error:
-	w.WriteHeader(500)
-	w.Write(`we are closed`)
+	jsend.Wrap(w).
+		Status(500).
+		Message("we are closed").
+		Send()
 
 	// body:
 	{
@@ -45,43 +52,8 @@ Error:
 		"message": "we are closed"
 	}
 
-Note: Write method does not json-encode your data.
 
-Use status functions
-
-You can use Success, Fail and Error functions directly to write json responses with those statuses.
-
-Success:
-	jsend.Success(w, data, 200) // w is ResponseWriter
-
-	// body:
-	{
-		"status": "success",
-		"data": // your json encoded data
-	}
-
-Fail:
-	jsend.Fail(w, data, 400)
-
-	// body:
-	{
-		"status": "fail",
-		"data": // your json encoded data
-	}
-
-Error:
-	jsend.Error(w, "something bad happened", 500)
-
-	{
-		"status": "error",
-		"message": "something bad happened"
-	}
-
-Success, Fail and Error functions write given statusCode to response. Also
-"Content-Type" header is set to "application/json" if it is not set already.
-
-
-* See http://labs.omniti.com/labs/jsend for details.
+* See http://labs.omniti.com/labs/jsend for jsend spec.
 */
 package jsend
 
@@ -99,134 +71,131 @@ const (
 	StatusFail    = "fail"
 )
 
-// Error types
-var (
-	ErrInvalidRawJSON = errors.New("jsend: given data is not a valid json.RawMessage")
-	ErrJSONEncode     = errors.New("jsend: could not json encode given data")
-	ErrWrittenAlready = errors.New("jsend: written already")
+const (
+	fieldMsg    = "message"
+	fieldData   = "data"
+	fieldStatus = "status"
 )
 
-// Success json encodes and writes data to specified response with "success" status.
-func Success(w http.ResponseWriter, data interface{}, code int) (int, error) {
-	return write(w, StatusSuccess, code, data, "")
-}
-
-// Error writes error string to specified response with "error" status.
-func Error(w http.ResponseWriter, error string, code int) (int, error) {
-	return write(w, StatusError, code, nil, error)
-}
-
-// Fail json encodes and writes data to specified response with "fail" status.
-func Fail(w http.ResponseWriter, data interface{}, code int) (int, error) {
-	return write(w, StatusFail, code, data, "")
-}
-
-type jsonResponse struct {
-	Status  string
-	Data    json.RawMessage
-	Message string
-}
-
-func (j *jsonResponse) MarshalJSON() ([]byte, error) {
-	if j.Status == StatusError {
-		return json.Marshal(map[string]interface{}{
-			"status":  j.Status,
-			"message": j.Message,
-		})
-	}
-
-	var data *json.RawMessage
-	if len(j.Data) > 0 {
-		data = &j.Data
-	}
-
-	return json.Marshal(map[string]interface{}{
-		"status": j.Status,
-		"data":   data,
-	})
-}
-
-func writeJSONResponse(w http.ResponseWriter, response *jsonResponse) (int, error) {
-	resJSON, err := json.Marshal(response)
-	if err != nil {
-		return 0, ErrInvalidRawJSON
-	}
-
-	return w.Write(resJSON)
-}
-
-func write(w http.ResponseWriter, status string, statusCode int, data interface{}, error string) (int, error) {
-	res := &jsonResponse{Status: status}
-	if data != nil {
-		dataJSON, err := json.Marshal(data)
-		if err != nil {
-			return 0, ErrJSONEncode
-		}
-
-		res.Data = dataJSON
-	}
-
-	if error != "" {
-		res.Message = error
+// Wrap wraps given http.ResponseWriter and returns a response object which
+// implements JResponseWriter interface.
+//
+// If given parameter already implements JResponseWriter "Wrap" returns it
+// instead of wrapping it again.
+func Wrap(w http.ResponseWriter) JResponseWriter {
+	if w, ok := w.(JResponseWriter); ok {
+		return w
 	}
 
 	if w.Header().Get("Content-Type") == "" {
 		w.Header().Set("Content-Type", "application/json")
 	}
 
-	w.WriteHeader(statusCode)
-
-	return writeJSONResponse(w, res)
+	return &Response{rw: w, fields: make(map[string]interface{})}
 }
 
-// Wrap wraps given http.ResponseWriter and returns a response object which
-// implements http.ResponseWriter interface.
-func Wrap(rw http.ResponseWriter) http.ResponseWriter {
-	if rw.Header().Get("Content-Type") == "" {
-		rw.Header().Set("Content-Type", "application/json")
-	}
+// A JResponseWriter interface extends http.ResponseWriter of go standard library
+// to add utility methods for JSend format.
+type JResponseWriter interface {
+	http.ResponseWriter
 
-	return &response{rw: rw}
+	Data(interface{}) JResponseWriter
+
+	Message(string) JResponseWriter
+
+	Status(int) JResponseWriter
+
+	Field(string, interface{}) JResponseWriter
+
+	Send() (int, error)
 }
 
-// A response wraps a http.ResponseWriter.
-type response struct {
-	rw      http.ResponseWriter
-	code    int
-	written bool
+// Response wraps a http.ResponseWriter type and adds jsend methods. Returning
+// type implements JResponseWriter which extends http.ResponseWriter.
+//
+// Response buffers given data and writes nothing until "Send" is called.
+type Response struct {
+	rw     http.ResponseWriter
+	code   int
+	sent   bool
+	fields map[string]interface{}
 	sync.Mutex
 }
 
-func (r *response) Header() http.Header {
+// Field method allows you to set custom response fields.
+func (r *Response) Field(key string, value interface{}) JResponseWriter {
+	r.fields[key] = value
+	return r
+}
+
+// Data sets response's "data" field with given value.
+func (r *Response) Data(data interface{}) JResponseWriter {
+	return r.Field(fieldData, data)
+}
+
+// Message sets response's "message" field with given value.
+func (r *Response) Message(msg string) JResponseWriter {
+	return r.Field(fieldMsg, msg)
+}
+
+// Status sets http statusCode. It is a shorthand for "WriteHeader" method
+// in order to keep method chaining.
+func (r *Response) Status(code int) JResponseWriter {
+	r.code = code
+	return r
+}
+
+// Header calls Header method of wrapped http.ResponseWriter.
+func (r *Response) Header() http.Header {
 	return r.rw.Header()
 }
 
-func (r *response) WriteHeader(code int) {
+// WriteHeader calls WriteHeader method of wrapped http.ResponseWriter.
+func (r *Response) WriteHeader(code int) {
 	r.code = code
 	r.rw.WriteHeader(code)
 }
 
-func (r *response) Write(data []byte) (int, error) {
+// Write calls Write method of wrapped http.ResponseWriter.
+func (r *Response) Write(data []byte) (int, error) {
+	return r.rw.Write(data)
+}
+
+var errSentAlready = errors.New("jsend: sent already")
+
+// Send encodes and writes buffered data to underlying http response object.
+func (r *Response) Send() (int, error) {
 	r.Lock()
 	defer r.Unlock()
 
-	if r.written {
-		return 0, ErrWrittenAlready
+	if r.sent {
+		return 0, errSentAlready
 	}
-	r.written = true
+	r.sent = true
 
-	st := getStatus(r.code)
-	jr := &jsonResponse{Status: st}
-	switch st {
-	case StatusError:
-		jr.Message = string(data)
-	case StatusFail:
-		jr.Data = data
-	default:
-		jr.Data = data
+	if r.code == 0 {
+		r.code = 200
+	}
+	status := getStatus(r.code)
+
+	r.WriteHeader(r.code)
+	r.Field(fieldStatus, status)
+
+	if _, hasMsg := r.fields[fieldMsg]; !hasMsg && status == StatusError {
+		r.Message(http.StatusText(r.code))
 	}
 
-	return writeJSONResponse(r.rw, jr)
+	if _, hasData := r.fields[fieldData]; !hasData && status != StatusError {
+		r.Data([]byte(nil))
+	}
+
+	j, err := json.Marshal(r.fields)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return r.Write(j)
 }
 
 func getStatus(code int) string {
