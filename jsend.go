@@ -119,7 +119,7 @@ type Response struct {
 	code   int
 	sent   bool
 	fields map[string]interface{}
-	sync.Mutex
+	mu     sync.Mutex
 }
 
 // Field method allows you to set custom response fields.
@@ -165,8 +165,8 @@ var errSentAlready = errors.New("jsend: sent already")
 
 // Send encodes and writes buffered data to underlying http response object.
 func (r *Response) Send() (int, error) {
-	r.Lock()
-	defer r.Unlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	if r.sent {
 		return 0, errSentAlready
