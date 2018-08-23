@@ -62,6 +62,7 @@ import (
 	"errors"
 	"net/http"
 	"sync"
+	"fmt"
 )
 
 // JSend status codes
@@ -103,6 +104,8 @@ type JResponseWriter interface {
 
 	Message(string) JResponseWriter
 
+	Messagef(string, ...interface{}) JResponseWriter
+
 	Status(int) JResponseWriter
 
 	Field(string, interface{}) JResponseWriter
@@ -136,6 +139,11 @@ func (r *Response) Data(data interface{}) JResponseWriter {
 // Message sets response's "message" field with given value.
 func (r *Response) Message(msg string) JResponseWriter {
 	return r.Field(fieldMsg, msg)
+}
+
+// Messagef sets response's "message" field with given value, after formatting it with Sprintf.
+func (r *Response) Messagef(format string, args ...interface{}) JResponseWriter {
+	return r.Field(fieldMsg, fmt.Sprintf(format, args...))
 }
 
 // Status sets http statusCode. It is a shorthand for "WriteHeader" method
