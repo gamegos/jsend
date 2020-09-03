@@ -3,7 +3,7 @@ package jsend_test
 import (
 	"net/http"
 
-	"github.com/gamegos/jsend"
+	"github.com/jsvensson/jsend"
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {

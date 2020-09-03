@@ -60,9 +60,9 @@ package jsend
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"sync"
-	"fmt"
 )
 
 // JSend status codes
