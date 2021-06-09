@@ -61,6 +61,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"sync"
 )
 
@@ -190,6 +191,7 @@ func (r *Response) Send() (int, error) {
 	}
 
 	j, err := json.Marshal(r.fields)
+	r.Header().Set("Content-Length", strconv.Itoa(len(j)))
 
 	if err != nil {
 		return 0, err
