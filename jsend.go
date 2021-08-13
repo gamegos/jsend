@@ -72,9 +72,10 @@ const (
 )
 
 const (
-	fieldMsg    = "message"
-	fieldData   = "data"
-	fieldStatus = "status"
+	fieldMsg         = "message"
+	fieldData        = "data"
+	fieldStatus      = "status"
+	fieldExperiments = "experiments"
 )
 
 // Wrap wraps given http.ResponseWriter and returns a response object which
@@ -100,6 +101,8 @@ type JResponseWriter interface {
 	http.ResponseWriter
 
 	Data(interface{}) JResponseWriter
+
+	Experiments(interface{}) JResponseWriter
 
 	Message(string) JResponseWriter
 
@@ -131,6 +134,11 @@ func (r *Response) Field(key string, value interface{}) JResponseWriter {
 // Data sets response's "data" field with given value.
 func (r *Response) Data(data interface{}) JResponseWriter {
 	return r.Field(fieldData, data)
+}
+
+// Data sets response's "data" field with given value.
+func (r *Response) Experiments(experiments interface{}) JResponseWriter {
+	return r.Field(fieldExperiments, experiments)
 }
 
 // Message sets response's "message" field with given value.
@@ -187,6 +195,10 @@ func (r *Response) Send() (int, error) {
 
 	if _, hasData := r.fields[fieldData]; !hasData && status != StatusError {
 		r.Data([]byte(nil))
+	}
+
+	if _, hasExperiments := r.fields[fieldExperiments]; !hasExperiments {
+		r.Experiments([]byte(nil))
 	}
 
 	j, err := json.Marshal(r.fields)
